@@ -8,7 +8,10 @@ import {
   StyleSheet,
   Platform,
   ViewPropTypes,
+  I18nManager
 } from 'react-native';
+
+import RN from 'react-native/package.json';
 
 import Line from '../line';
 import Label from '../label';
@@ -16,26 +19,7 @@ import Affix from '../affix';
 import Helper from '../helper';
 import Counter from '../counter';
 
-import styles from './styles';
-
-function startAnimation(animation, options, callback) {
-  Animated
-    .timing(animation, options)
-    .start(callback);
-}
-
-function labelStateFromProps(props, state) {
-  let { placeholder, defaultValue } = props;
-  let { text, receivedFocus } = state;
-
-  return !!(placeholder || text || (!receivedFocus && defaultValue));
-}
-
-function errorStateFromProps(props, state) {
-  let { error } = props;
-
-  return !!error;
-}
+import styles from './styles.js';
 
 export default class TextField extends PureComponent {
   static defaultProps = {
@@ -47,7 +31,11 @@ export default class TextField extends PureComponent {
     animationDuration: 225,
 
     fontSize: 16,
+    titleFontSize: 12,
     labelFontSize: 12,
+    labelHeight: 32,
+    labelPadding: 4,
+    inputContainerPadding: 8,
 
     tintColor: 'rgb(0, 145, 234)',
     textColor: 'rgba(0, 0, 0, .87)',
@@ -57,33 +45,23 @@ export default class TextField extends PureComponent {
 
     lineWidth: StyleSheet.hairlineWidth,
     activeLineWidth: 2,
-    disabledLineWidth: 1,
-
-    lineType: 'solid',
-    disabledLineType: 'dotted',
 
     disabled: false,
-
-    lineComponent: Line,
+    disabledLineType: 'dotted',
+    disabledLineWidth: 1
   };
 
   static propTypes = {
     ...TextInput.propTypes,
 
     animationDuration: PropTypes.number,
-
+    isDropDown: PropTypes.bool,
     fontSize: PropTypes.number,
+    titleFontSize: PropTypes.number,
     labelFontSize: PropTypes.number,
-
-    contentInset: PropTypes.shape({
-      top: PropTypes.number,
-      label: PropTypes.number,
-      input: PropTypes.number,
-      left: PropTypes.number,
-      right: PropTypes.number,
-    }),
-
-    labelOffset: Label.propTypes.offset,
+    labelHeight: PropTypes.number,
+    labelPadding: PropTypes.number,
+    inputContainerPadding: PropTypes.number,
 
     labelTextStyle: Text.propTypes.style,
     titleTextStyle: Text.propTypes.style,
@@ -93,7 +71,7 @@ export default class TextField extends PureComponent {
     textColor: PropTypes.string,
     baseColor: PropTypes.string,
 
-    label: PropTypes.string,
+    label: PropTypes.string.isRequired,
     title: PropTypes.string,
 
     characterRestriction: PropTypes.number,
@@ -103,52 +81,20 @@ export default class TextField extends PureComponent {
 
     lineWidth: PropTypes.number,
     activeLineWidth: PropTypes.number,
-    disabledLineWidth: PropTypes.number,
-
-    lineType: Line.propTypes.lineType,
-    disabledLineType: Line.propTypes.lineType,
 
     disabled: PropTypes.bool,
+    disabledLineType: Line.propTypes.type,
+    disabledLineWidth: PropTypes.number,
 
-    formatText: PropTypes.func,
-
+    renderAccessory: PropTypes.func,
     renderLeftAccessory: PropTypes.func,
-    renderRightAccessory: PropTypes.func,
 
     prefix: PropTypes.string,
     suffix: PropTypes.string,
 
-    lineComponent: PropTypes.func,
-
     containerStyle: (ViewPropTypes || View.propTypes).style,
-    inputContainerStyle: (ViewPropTypes || View.propTypes).style,
+    inputContainerStyle: (ViewPropTypes || View.propTypes).style
   };
-
-  static inputContainerStyle = styles.inputContainer;
-
-  static contentInset = {
-    top: 16,
-    label: 4,
-    input: 8,
-    left: 0,
-    right: 0,
-  };
-
-  static labelOffset = {
-    x0: 0,
-    y0: 0,
-    x1: 0,
-    y1: 0,
-  };
-
-  static getDerivedStateFromProps({ error }, state) {
-    /* Keep last received error in state */
-    if (error && error !== state.error) {
-      return { error };
-    }
-
-    return null;
-  }
 
   constructor(props) {
     super(props);
@@ -161,38 +107,39 @@ export default class TextField extends PureComponent {
     this.onContentSizeChange = this.onContentSizeChange.bind(this);
     this.onFocusAnimationEnd = this.onFocusAnimationEnd.bind(this);
 
-    this.createGetter('contentInset');
-    this.createGetter('labelOffset');
+    this.updateRef = this.updateRef.bind(this, 'input');
 
-    this.inputRef = React.createRef();
+    let { value, error, fontSize } = this.props;
+
     this.mounted = false;
-    this.focused = false;
-
-    let { value: text, error, fontSize } = this.props;
-
-    let labelState = labelStateFromProps(this.props, { text })? 1 : 0;
-    let focusState = errorStateFromProps(this.props)? -1 : 0;
-
     this.state = {
-      text,
-      error,
+      text: value,
 
-      focusAnimation: new Animated.Value(focusState),
-      labelAnimation: new Animated.Value(labelState),
-
+      focus: new Animated.Value(this.focusState(error, false)),
+      focused: false,
       receivedFocus: false,
 
-      height: fontSize * 1.5,
+      error: error,
+      errored: !!error,
+
+      height: fontSize * 1.5
     };
   }
 
-  createGetter(name) {
-    this[name] = () => {
-      let { [name]: value } = this.props;
-      let { [name]: defaultValue } = this.constructor;
+  componentWillReceiveProps(props) {
+    let { error } = this.state;
 
-      return { ...defaultValue, ...value };
-    };
+    if (null != props.value) {
+      this.setState({ text: props.value });
+    }
+
+    if (props.error && props.error !== error) {
+      this.setState({ error: props.error });
+    }
+
+    if (props.error !== this.props.error) {
+      this.setState({ errored: !!props.error });
+    }
   }
 
   componentDidMount() {
@@ -203,151 +150,68 @@ export default class TextField extends PureComponent {
     this.mounted = false;
   }
 
-  componentDidUpdate(prevProps, prevState) {
-    let errorState = errorStateFromProps(this.props);
-    let prevErrorState = errorStateFromProps(prevProps);
+  componentWillUpdate(props, state) {
+    let { error, animationDuration: duration } = this.props;
+    let { focus, focused } = this.state;
 
-    if (errorState ^ prevErrorState) {
-      this.startFocusAnimation();
-    }
+    if (props.error !== error || focused ^ state.focused) {
+      let toValue = this.focusState(props.error, state.focused);
 
-    let labelState = labelStateFromProps(this.props, this.state);
-    let prevLabelState = labelStateFromProps(prevProps, prevState);
-
-    if (labelState ^ prevLabelState) {
-      this.startLabelAnimation();
+      Animated.timing(focus, { toValue, duration }).start(
+        this.onFocusAnimationEnd
+      );
     }
   }
 
-  startFocusAnimation() {
-    let { focusAnimation } = this.state;
-    let { animationDuration: duration } = this.props;
-
-    let options = {
-      toValue: this.focusState(),
-      duration,
-    };
-
-    startAnimation(focusAnimation, options, this.onFocusAnimationEnd);
+  updateRef(name, ref) {
+    this[name] = ref;
   }
 
-  startLabelAnimation() {
-    let { labelAnimation } = this.state;
-    let { animationDuration: duration } = this.props;
-
-    let options = {
-      toValue: this.labelState(),
-      useNativeDriver: true,
-      duration,
-    };
-
-    startAnimation(labelAnimation, options);
-  }
-
-  setNativeProps(props) {
-    let { current: input } = this.inputRef;
-
-    input.setNativeProps(props);
-  }
-
-  focusState() {
-    if (errorStateFromProps(this.props)) {
-      return -1;
-    }
-
-    return this.focused? 1 : 0;
-  }
-
-  labelState() {
-    if (labelStateFromProps(this.props, this.state)) {
-      return 1;
-    }
-
-    return this.focused? 1 : 0;
+  focusState(error, focused) {
+    return error ? -1 : focused ? 1 : 0;
   }
 
   focus() {
     let { disabled, editable } = this.props;
-    let { current: input } = this.inputRef;
 
     if (!disabled && editable) {
-      input.focus();
+      this.input.focus();
     }
   }
 
   blur() {
-    let { current: input } = this.inputRef;
-
-    input.blur();
+    this.input.blur();
   }
 
   clear() {
-    let { current: input } = this.inputRef;
-
-    input.clear();
+    this.input.clear();
 
     /* onChangeText is not triggered by .clear() */
     this.onChangeText('');
   }
 
   value() {
-    let { text } = this.state;
-    let { defaultValue } = this.props;
+    let { text, receivedFocus } = this.state;
+    let { value, defaultValue } = this.props;
 
-    let value = this.isDefaultVisible()?
-      defaultValue:
-      text;
-
-    if (null == value) {
-      return '';
-    }
-
-    return 'string' === typeof value?
-      value:
-      String(value);
-  }
-
-  setValue(text) {
-    this.setState({ text });
+    return receivedFocus || null != value || null == defaultValue
+      ? text
+      : defaultValue;
   }
 
   isFocused() {
-    let { current: input } = this.inputRef;
-
-    return input.isFocused();
+    return this.input.isFocused();
   }
 
   isRestricted() {
-    let { characterRestriction: limit } = this.props;
-    let { length: count } = this.value();
+    let { characterRestriction } = this.props;
+    let { text = '' } = this.state;
 
-    return limit < count;
-  }
-
-  isErrored() {
-    return errorStateFromProps(this.props);
-  }
-
-  isDefaultVisible() {
-    let { text, receivedFocus } = this.state;
-    let { defaultValue } = this.props;
-
-    return !receivedFocus && null == text && null != defaultValue;
-  }
-
-  isPlaceholderVisible() {
-    let { placeholder } = this.props;
-
-    return placeholder && !this.focused && !this.value();
-  }
-
-  isLabelActive() {
-    return 1 === this.labelState();
+    return characterRestriction < text.length;
   }
 
   onFocus(event) {
     let { onFocus, clearTextOnFocus } = this.props;
-    let { receivedFocus } = this.state;
 
     if ('function' === typeof onFocus) {
       onFocus(event);
@@ -357,14 +221,7 @@ export default class TextField extends PureComponent {
       this.clear();
     }
 
-    this.focused = true;
-
-    this.startFocusAnimation();
-    this.startLabelAnimation();
-
-    if (!receivedFocus) {
-      this.setState({ receivedFocus: true, text: this.value() });
-    }
+    this.setState({ focused: true, receivedFocus: true });
   }
 
   onBlur(event) {
@@ -374,26 +231,26 @@ export default class TextField extends PureComponent {
       onBlur(event);
     }
 
-    this.focused = false;
-
-    this.startFocusAnimation();
-    this.startLabelAnimation();
+    this.setState({ focused: false });
   }
 
   onChange(event) {
-    let { onChange } = this.props;
+    let { onChange, multiline } = this.props;
 
     if ('function' === typeof onChange) {
       onChange(event);
     }
+
+    /* XXX: onContentSizeChange is not called on RN 0.44 and 0.45 */
+    if (multiline && 'android' === Platform.OS) {
+      if (/^0\.4[45]\./.test(RN.version)) {
+        this.onContentSizeChange(event);
+      }
+    }
   }
 
   onChangeText(text) {
-    let { onChangeText, formatText } = this.props;
-
-    if ('function' === typeof formatText) {
-      text = formatText(text);
-    }
+    let { onChangeText } = this.props;
 
     this.setState({ text });
 
@@ -413,81 +270,44 @@ export default class TextField extends PureComponent {
     this.setState({
       height: Math.max(
         fontSize * 1.5,
-        Math.ceil(height) + Platform.select({ ios: 4, android: 1 })
-      ),
+        Math.ceil(height) + Platform.select({ ios: 5, android: 1 })
+      )
     });
   }
 
   onFocusAnimationEnd() {
-    let { error } = this.props;
-    let { error: retainedError } = this.state;
-
-    if (this.mounted && !error && retainedError) {
-      this.setState({ error: null });
+    if (this.mounted) {
+      this.setState((state, { error }) => ({ error }));
     }
   }
 
-  inputHeight() {
-    let { height: computedHeight } = this.state;
-    let { multiline, fontSize, height = computedHeight } = this.props;
-
-    return multiline?
-      height:
-      fontSize * 1.5;
-  }
-
-  inputContainerHeight() {
-    let { labelFontSize, multiline } = this.props;
-    let contentInset = this.contentInset();
-
-    if ('web' === Platform.OS && multiline) {
-      return 'auto';
-    }
-
-    return contentInset.top
-      + labelFontSize
-      + contentInset.label
-      + this.inputHeight()
-      + contentInset.input;
-  }
-
-  inputProps() {
-    let store = {};
-
-    for (let key in TextInput.propTypes) {
-      if ('defaultValue' === key) {
-        continue;
-      }
-
-      if (key in this.props) {
-        store[key] = this.props[key];
-      }
-    }
-
-    return store;
-  }
-
-  renderAccessory(prop) {
-    let { [prop]: renderAccessory } = this.props;
+  renderAccessory() {
+    let { renderAccessory } = this.props;
 
     if ('function' !== typeof renderAccessory) {
       return null;
     }
 
-    return (
-      <View style={styles.accessory}>
-        {renderAccessory()}
-      </View>
-    );
+    return <View style={styles.accessory}>{renderAccessory()}</View>;
   }
 
-  renderAffix(type) {
-    let { labelAnimation } = this.state;
+  renderLeftAccessory() {
+    let { renderLeftAccessory } = this.props;
+
+    if ('function' !== typeof renderLeftAccessory) {
+      return null;
+    }
+
+    return <View style={styles.accessory}>{renderLeftAccessory()}</View>;
+  }
+
+  renderAffix(type, active, focused) {
     let {
       [type]: affix,
       fontSize,
-      baseColor: color,
-      affixTextStyle: style,
+      baseColor,
+      animationDuration,
+      affixTextStyle
     } = this.props;
 
     if (null == affix) {
@@ -496,224 +316,263 @@ export default class TextField extends PureComponent {
 
     let props = {
       type,
-      style,
-      color,
+      active,
+      focused,
       fontSize,
-      labelAnimation,
+      baseColor,
+      animationDuration
     };
 
     return (
-      <Affix {...props}>{affix}</Affix>
-    );
-  }
-
-  renderHelper() {
-    let { focusAnimation, error } = this.state;
-
-    let {
-      title,
-      disabled,
-      baseColor,
-      errorColor,
-      titleTextStyle: style,
-      characterRestriction: limit,
-    } = this.props;
-
-    let { length: count } = this.value();
-    let contentInset = this.contentInset();
-
-    let containerStyle =  {
-      paddingLeft: contentInset.left,
-      paddingRight: contentInset.right,
-    };
-
-    let styleProps = {
-      style,
-      baseColor,
-      errorColor,
-    };
-
-    let counterProps = {
-      ...styleProps,
-      limit,
-      count,
-    };
-
-    let helperProps = {
-      ...styleProps,
-      title,
-      error,
-      disabled,
-      focusAnimation,
-    };
-
-    return (
-      <View style={[styles.helperContainer, containerStyle]}>
-        <Helper {...helperProps} />
-        <Counter {...counterProps} />
-      </View>
-    );
-  }
-
-  renderInput() {
-    let {
-      disabled,
-      editable,
-      multiline,
-      fontSize,
-      baseColor,
-      tintColor,
-      textColor,
-      style: inputStyleOverrides,
-    } = this.props;
-
-    let props = this.inputProps();
-    let defaultVisible = this.isDefaultVisible();
-
-    let inputStyle = {
-      fontSize,
-
-      color: (disabled || defaultVisible)?
-        baseColor:
-        textColor,
-
-      height: this.inputHeight(),
-    };
-
-    if (multiline) {
-      let lineHeight = fontSize * 1.5;
-
-      inputStyle.height += lineHeight;
-      inputStyle.transform = [{
-        translateY: lineHeight + ('ios' === Platform.OS? 2 : 0),
-      }];
-    }
-
-    return (
-      <TextInput
-        selectionColor={tintColor}
-
-        {...props}
-
-        style={[styles.input, inputStyle, inputStyleOverrides]}
-        editable={!disabled && editable}
-        onChange={this.onChange}
-        onChangeText={this.onChangeText}
-        onContentSizeChange={this.onContentSizeChange}
-        onFocus={this.onFocus}
-        onBlur={this.onBlur}
-        value={this.value()}
-        ref={this.inputRef}
-      />
+      <Affix style={affixTextStyle} {...props}>
+        {affix}
+      </Affix>
     );
   }
 
   render() {
-    let { labelAnimation, focusAnimation } = this.state;
     let {
+      receivedFocus,
+      focus,
+      focused,
+      error,
+      errored,
+      height,
+      text = ''
+    } = this.state;
+    let {
+      style: inputStyleOverrides,
       label,
+      title,
+      value,
+      defaultValue,
+      characterRestriction: limit,
       editable,
       disabled,
-      lineType,
       disabledLineType,
-      lineWidth,
-      activeLineWidth,
       disabledLineWidth,
+      animationDuration,
       fontSize,
+      titleFontSize,
       labelFontSize,
+      labelHeight,
+      labelPadding,
+      inputContainerPadding,
       labelTextStyle,
+      titleTextStyle,
       tintColor,
       baseColor,
+      textColor,
       errorColor,
+      lineWidth,
+      activeLineWidth,
       containerStyle,
-      lineComponent: Line,
       inputContainerStyle: inputContainerStyleOverrides,
+      clearTextOnFocus,
+      isDropDown,
+      placeholder,
+      ...props
     } = this.props;
 
-    let restricted = this.isRestricted();
-    let contentInset = this.contentInset();
+    if (props.multiline && props.height) {
+      /* Disable autogrow if height is passed as prop */
+      height = props.height;
+    }
+
+    let defaultVisible = !(
+      receivedFocus ||
+      null != value ||
+      null == defaultValue
+    );
+
+    value = defaultVisible ? defaultValue : text;
+
+    let active = !!(value || props.placeholder);
+    let count = value.length;
+    let restricted = limit < count;
+
+    let textAlign = I18nManager.isRTL ? 'right' : 'left';
+
+    let borderBottomColor = restricted
+      ? errorColor
+      : focus.interpolate({
+          inputRange: [-1, 0, 1],
+          outputRange: [errorColor, baseColor, tintColor]
+        });
+
+    let borderBottomWidth = restricted
+      ? activeLineWidth
+      : focus.interpolate({
+          inputRange: [-1, 0, 1],
+          outputRange: [activeLineWidth, lineWidth, activeLineWidth]
+        });
 
     let inputContainerStyle = {
-      paddingTop: contentInset.top,
-      paddingRight: contentInset.right,
-      paddingBottom: contentInset.input,
-      paddingLeft: contentInset.left,
-      height: this.inputContainerHeight(),
+      paddingTop: labelHeight,
+      paddingBottom: inputContainerPadding,
+
+      ...(disabled
+        ? { overflow: 'hidden' }
+        : { borderBottomColor, borderBottomWidth }),
+
+      ...(props.multiline
+        ? {
+            height:
+              'web' === Platform.OS
+                ? 'auto'
+                : labelHeight + inputContainerPadding + height
+          }
+        : { height: labelHeight + inputContainerPadding + fontSize * 1.5 })
+    };
+
+    let inputStyle = {
+      fontSize,
+      textAlign,
+
+      color: disabled || defaultVisible ? baseColor : textColor,
+
+      ...(props.multiline
+        ? {
+            height: fontSize * 1.5 + height,
+
+            ...Platform.select({
+              ios: { top: -1 },
+              android: { textAlignVertical: 'top' }
+            })
+          }
+        : { height: fontSize * 1.5 })
+    };
+
+    let errorStyle = {
+      color: errorColor,
+
+      opacity: focus.interpolate({
+        inputRange: [-1, 0, 1],
+        outputRange: [1, 0, 0]
+      }),
+
+      fontSize: title
+        ? titleFontSize
+        : focus.interpolate({
+            inputRange: [-1, 0, 1],
+            outputRange: [titleFontSize, 0, 0]
+          })
+    };
+
+    let titleStyle = {
+      color: baseColor,
+
+      opacity: focus.interpolate({
+        inputRange: [-1, 0, 1],
+        outputRange: [0, 1, 1]
+      }),
+
+      fontSize: titleFontSize
+    };
+
+    let helperContainerStyle = {
+      flexDirection: 'row',
+      height:
+        title || limit
+          ? titleFontSize * 2
+          : focus.interpolate({
+              inputRange: [-1, 0, 1],
+              outputRange: [titleFontSize * 2, 8, 8]
+            })
     };
 
     let containerProps = {
       style: containerStyle,
       onStartShouldSetResponder: () => true,
       onResponderRelease: this.onPress,
-      pointerEvents: !disabled && editable?
-        'auto':
-        'none',
+      pointerEvents: !disabled && editable ? 'auto' : 'none'
     };
 
     let inputContainerProps = {
       style: [
-        this.constructor.inputContainerStyle,
+        styles.inputContainer,
         inputContainerStyle,
-        inputContainerStyleOverrides,
-      ],
-    };
-
-    let styleProps = {
-      disabled,
-      restricted,
-      baseColor,
-      tintColor,
-      errorColor,
-
-      focusAnimation,
-      labelAnimation,
+        inputContainerStyleOverrides
+      ]
     };
 
     let lineProps = {
-      ...styleProps,
-
-      lineWidth,
-      activeLineWidth,
-      disabledLineWidth,
-
-      lineType,
-      disabledLineType,
+      type: disabledLineType,
+      width: disabledLineWidth,
+      color: baseColor
     };
 
     let labelProps = {
-      ...styleProps,
-
+      baseSize: labelHeight,
+      basePadding: labelPadding,
       fontSize,
       activeFontSize: labelFontSize,
-      activeInset: contentInset.label,
+      tintColor,
+      baseColor,
+      errorColor,
+      animationDuration,
+      active: this.props.renderLeftAccessory ? true : active,
+      focused,
+      errored,
+      restricted,
+      style: labelTextStyle
+    };
 
-      offset: this.labelOffset(),
 
-      style: labelTextStyle,
-      label,
+    let counterProps = {
+      baseColor,
+      errorColor,
+      count,
+      limit,
+      fontSize: titleFontSize,
+      style: titleTextStyle
     };
 
     return (
       <View {...containerProps}>
         <Animated.View {...inputContainerProps}>
-          <Line {...lineProps} />
+          {disabled && <Line {...lineProps} />}
 
-          {this.renderAccessory('renderLeftAccessory')}
+          <Label {...labelProps}>{label}</Label>
 
-          <View style={styles.stack}>
-            <Label {...labelProps} />
+          <View style={styles.row}>
+            {this.renderAffix('prefix', active, focused)}
+            {this.renderLeftAccessory()}
 
-            <View style={styles.row}>
-              {this.renderAffix('prefix')}
-              {this.renderInput()}
-              {this.renderAffix('suffix')}
-            </View>
+            <TextInput
+              style={[styles.input, inputStyle, inputStyleOverrides]}
+              selectionColor={tintColor}
+              placeholder={
+                !focused
+                  ? isDropDown || this.props.renderLeftAccessory
+                    ? placeholder
+                    : null
+                  : placeholder
+              }
+              {...props}
+              editable={!disabled && editable}
+              onChange={this.onChange}
+              onChangeText={this.onChangeText}
+              onContentSizeChange={this.onContentSizeChange}
+              onFocus={this.onFocus}
+              onBlur={this.onBlur}
+              value={value}
+              ref={this.updateRef}
+            />
+
+            {this.renderAffix('suffix', active, focused)}
+            {this.renderAccessory()}
           </View>
-
-          {this.renderAccessory('renderRightAccessory')}
         </Animated.View>
 
-        {this.renderHelper()}
+        <Animated.View style={helperContainerStyle}>
+          <View style={styles.flex}>
+            <Helper style={[errorStyle, titleTextStyle]}>{error}</Helper>
+            <Helper style={[titleStyle, titleTextStyle]}>{title}</Helper>
+          </View>
+
+          <Counter {...counterProps} />
+        </Animated.View>
       </View>
     );
   }
