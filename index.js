@@ -1,4 +1,3 @@
-import TextField from './src/components/field';
-import FilledTextField from './src/components/filled';
+import TextField from "./src/components/field";
 
-export { TextField, FilledTextField };
+export { TextField };
