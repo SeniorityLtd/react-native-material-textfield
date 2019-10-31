@@ -518,6 +518,7 @@ export default class TextField extends PureComponent {
       style: labelTextStyle
     };
 
+    debugger;
 
     let counterProps = {
       baseColor,
