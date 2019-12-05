@@ -388,7 +388,7 @@ export default class TextField extends PureComponent {
     value = defaultVisible ? defaultValue : text;
 
     let active = !!(value || props.placeholder);
-    let count = value.length;
+    let count = value ? value.length : 0;
     let restricted = limit < count;
 
     let textAlign = I18nManager.isRTL ? 'right' : 'left';
@@ -518,7 +518,6 @@ export default class TextField extends PureComponent {
       style: labelTextStyle
     };
 
-    debugger;
 
     let counterProps = {
       baseColor,
