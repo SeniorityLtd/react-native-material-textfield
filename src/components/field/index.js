@@ -48,7 +48,8 @@ export default class TextField extends PureComponent {
 
     disabled: false,
     disabledLineType: 'dotted',
-    disabledLineWidth: 1
+    disabledLineWidth: 1,
+    disableBottomBorder: false
   };
 
   static propTypes = {
@@ -93,7 +94,8 @@ export default class TextField extends PureComponent {
     suffix: PropTypes.string,
 
     containerStyle: (ViewPropTypes || View.propTypes).style,
-    inputContainerStyle: (ViewPropTypes || View.propTypes).style
+    inputContainerStyle: (ViewPropTypes || View.propTypes).style,
+    disableBottomBorder: PropTypes.bool
   };
 
   constructor(props) {
@@ -371,6 +373,7 @@ export default class TextField extends PureComponent {
       clearTextOnFocus,
       isDropDown,
       placeholder,
+      disableBottomBorder,
       ...props
     } = this.props;
 
@@ -413,7 +416,7 @@ export default class TextField extends PureComponent {
 
       ...(disabled
         ? { overflow: 'hidden' }
-        : { borderBottomColor, borderBottomWidth }),
+        : disableBottomBorder ? null: { borderBottomColor, borderBottomWidth }),
 
       ...(props.multiline
         ? {
