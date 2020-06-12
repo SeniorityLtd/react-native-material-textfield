@@ -159,7 +159,7 @@ export default class TextField extends PureComponent {
     if (props.error !== error || focused ^ state.focused) {
       let toValue = this.focusState(props.error, state.focused);
 
-      Animated.timing(focus, { toValue, duration }).start(
+      Animated.timing(focus, { toValue, duration,useNativeDriver : false }).start(
         this.onFocusAnimationEnd
       );
     }
