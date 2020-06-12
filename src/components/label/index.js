@@ -1,6 +1,6 @@
 import PropTypes from 'prop-types';
 import React, { PureComponent } from 'react';
-import { Animated } from 'react-native';
+import { Animated,Text, Platform } from 'react-native';
 
 export default class Label extends PureComponent {
   static defaultProps = {
@@ -29,7 +29,7 @@ export default class Label extends PureComponent {
 
     animationDuration: PropTypes.number.isRequired,
 
-    style: Animated.Text.propTypes.style,
+    style: Text.propTypes.style,
 
     children: PropTypes.oneOfType([
       PropTypes.arrayOf(PropTypes.node),
@@ -54,7 +54,7 @@ export default class Label extends PureComponent {
       let toValue = this.inputState(props);
 
       Animated
-        .timing(input, { toValue, duration })
+        .timing(input, { toValue, duration,useNativeDriver : false })
         .start();
     }
 
@@ -62,7 +62,7 @@ export default class Label extends PureComponent {
       let toValue = this.focusState(props);
 
       Animated
-        .timing(focus, { toValue, duration })
+        .timing(focus, { toValue, duration,useNativeDriver : false })
         .start();
     }
   }
@@ -106,7 +106,7 @@ export default class Label extends PureComponent {
       inputRange: [0, 1],
       outputRange: [
         baseSize + fontSize * 0.25,
-        baseSize - basePadding - activeFontSize,
+        baseSize - basePadding - activeFontSize - (Platform.OS ==='ios' ? 3 :5),
       ],
     });
 
